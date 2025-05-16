@@ -20,16 +20,17 @@ import org.traccar.api.security.PermissionsService;
 import org.traccar.model.Server;
 import org.traccar.storage.StorageException;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
-import javax.servlet.Filter;
-import javax.servlet.FilterChain;
-import javax.servlet.ServletException;
-import javax.servlet.ServletRequest;
-import javax.servlet.ServletResponse;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
+import jakarta.servlet.Filter;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.ServletRequest;
+import jakarta.servlet.ServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
 @Singleton
 public class OverrideFilter implements Filter {
@@ -45,6 +46,11 @@ public class OverrideFilter implements Filter {
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
             throws IOException, ServletException {
 
+        if (((HttpServletRequest) request).getServletPath().startsWith("/api")) {
+            chain.doFilter(request, response);
+            return;
+        }
+
         ResponseWrapper wrappedResponse = new ResponseWrapper((HttpServletResponse) response);
 
         chain.doFilter(request, wrappedResponse);
@@ -52,7 +58,7 @@ public class OverrideFilter implements Filter {
         byte[] bytes = wrappedResponse.getCapture();
         if (bytes != null) {
             if (wrappedResponse.getContentType() != null && wrappedResponse.getContentType().contains("text/html")
-                    || ((HttpServletRequest) request).getPathInfo().endsWith("manifest.json")) {
+                    || ((HttpServletRequest) request).getPathInfo().endsWith("manifest.webmanifest")) {
 
                 Server server;
                 try {
@@ -65,13 +71,14 @@ public class OverrideFilter implements Filter {
                 String description = server.getString("description", "Traccar GPS Tracking System");
                 String colorPrimary = server.getString("colorPrimary", "#1a237e");
 
-                String alteredContent = new String(wrappedResponse.getCapture())
+                String alteredContent = new String(wrappedResponse.getCapture(), StandardCharsets.UTF_8)
                         .replace("${title}", title)
                         .replace("${description}", description)
                         .replace("${colorPrimary}", colorPrimary);
 
-                response.setContentLength(alteredContent.length());
-                response.getOutputStream().write(alteredContent.getBytes());
+                byte[] data = alteredContent.getBytes(StandardCharsets.UTF_8);
+                response.setContentLength(data.length);
+                response.getOutputStream().write(data);
 
             } else {
                 response.getOutputStream().write(bytes);

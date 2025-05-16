@@ -28,18 +28,19 @@ import org.traccar.storage.query.Columns;
 import org.traccar.storage.query.Condition;
 import org.traccar.storage.query.Request;
 
-import javax.inject.Inject;
-import javax.ws.rs.Consumes;
-import javax.ws.rs.GET;
-import javax.ws.rs.DELETE;
-import javax.ws.rs.Path;
-import javax.ws.rs.Produces;
-import javax.ws.rs.QueryParam;
-import javax.ws.rs.WebApplicationException;
-import javax.ws.rs.core.HttpHeaders;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.StreamingOutput;
+import jakarta.inject.Inject;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.DELETE;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.HttpHeaders;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.StreamingOutput;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
@@ -86,6 +87,23 @@ public class PositionResource extends BaseResource {
         } else {
             return PositionUtil.getLatestPositions(storage, getUserId());
         }
+    }
+
+    @Path("{id}")
+    @DELETE
+    public Response removeById(@PathParam("id") long positionId) throws StorageException {
+        permissionsService.checkRestriction(getUserId(), UserRestrictions::getReadonly);
+
+        Request request = new Request(new Columns.All(), new Condition.Equals("id", positionId));
+        Position position = storage.getObject(Position.class, request);
+        if (position == null) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+
+        permissionsService.checkPermission(Device.class, getUserId(), position.getDeviceId());
+
+        storage.removeObject(Position.class, request);
+        return Response.status(Response.Status.NO_CONTENT).build();
     }
 
     @DELETE

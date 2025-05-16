@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 - 2022 Anton Tananaev (anton@traccar.org)
+ * Copyright 2016 - 2023 Anton Tananaev (anton@traccar.org)
  * Copyright 2016 - 2017 Andrey Kunitsyn (andrey@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,8 @@
  */
 package org.traccar.reports.common;
 
+import jakarta.annotation.Nullable;
+import jakarta.inject.Inject;
 import org.apache.velocity.app.VelocityEngine;
 import org.apache.velocity.tools.generic.DateTool;
 import org.apache.velocity.tools.generic.NumberTool;
@@ -52,13 +54,9 @@ import org.traccar.storage.query.Condition;
 import org.traccar.storage.query.Order;
 import org.traccar.storage.query.Request;
 
-import javax.annotation.Nullable;
-import javax.inject.Inject;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Date;
@@ -102,14 +100,11 @@ public class ReportUtils {
         }
     }
 
-    public double calculateFuel(Position firstPosition, Position lastPosition) {
-
-        if (firstPosition.getAttributes().get(Position.KEY_FUEL_LEVEL) != null
-                && lastPosition.getAttributes().get(Position.KEY_FUEL_LEVEL) != null) {
-
-            BigDecimal value = BigDecimal.valueOf(firstPosition.getDouble(Position.KEY_FUEL_LEVEL)
-                    - lastPosition.getDouble(Position.KEY_FUEL_LEVEL));
-            return value.setScale(1, RoundingMode.HALF_EVEN).doubleValue();
+    public double calculateFuel(Position first, Position last) {
+        if (first.hasAttribute(Position.KEY_FUEL_USED) && last.hasAttribute(Position.KEY_FUEL_USED)) {
+            return last.getDouble(Position.KEY_FUEL_USED) - first.getDouble(Position.KEY_FUEL_USED);
+        } else if (first.hasAttribute(Position.KEY_FUEL_LEVEL) && last.hasAttribute(Position.KEY_FUEL_LEVEL)) {
+            return first.getDouble(Position.KEY_FUEL_LEVEL) - last.getDouble(Position.KEY_FUEL_LEVEL);
         }
         return 0;
     }
@@ -307,7 +302,7 @@ public class ReportUtils {
         List<T> result = new ArrayList<>();
         TripsConfig tripsConfig = new TripsConfig(
                 new AttributeUtil.StorageProvider(config, storage, permissionsService, device));
-        boolean ignoreOdometer = config.getBoolean(Keys.REPORT_IGNORE_ODOMETER);
+        boolean ignoreOdometer = tripsConfig.getIgnoreOdometer();
 
         var positions = PositionUtil.getPositions(storage, device.getId(), from, to);
         if (!positions.isEmpty()) {
@@ -368,7 +363,9 @@ public class ReportUtils {
             Device device, Date from, Date to, Class<T> reportClass) throws StorageException {
 
         List<T> result = new ArrayList<>();
-        boolean ignoreOdometer = config.getBoolean(Keys.REPORT_IGNORE_ODOMETER);
+        TripsConfig tripsConfig = new TripsConfig(
+                new AttributeUtil.StorageProvider(config, storage, permissionsService, device));
+        boolean ignoreOdometer = tripsConfig.getIgnoreOdometer();
         boolean trips = reportClass.equals(TripReportItem.class);
         Set<String> filter = Set.of(Event.TYPE_DEVICE_MOVING, Event.TYPE_DEVICE_STOPPED);
 
@@ -392,7 +389,10 @@ public class ReportUtils {
                         new Columns.All(), new Condition.Equals("id", startEvent.getPositionId())));
                 Position endPosition = storage.getObject(Position.class, new Request(
                         new Columns.All(), new Condition.Equals("id", event.getPositionId())));
-                result.add(calculateTripOrStop(device, startPosition, endPosition, 0, ignoreOdometer, reportClass));
+                if (startPosition != null && endPosition != null) {
+                    result.add(calculateTripOrStop(
+                            device, startPosition, endPosition, 0, ignoreOdometer, reportClass));
+                }
                 startEvent = null;
             }
         }
